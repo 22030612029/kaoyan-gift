@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b2b33">
+<title>你收到一份神秘礼物</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body {
+    position: fixed;
+    inset: 0;
+    height: 100dvh;
+    width: 100%;
+    background: #24242c;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "Noto Sans SC", "Segoe UI Emoji", "Apple Color Emoji",
+                 "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    color: #3a2f2a;
+  }
+
+  #stage { position: absolute; inset: 0; }
+
+  #board {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: linear-gradient(160deg, #fff8ef 0%, #ffeedd 40%, #ffe8d6 100%);
+  }
+
+  /* 背景柔光光斑 */
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: .45;
+    pointer-events: none;
+    z-index: 0;
+    animation: blobFloat 12s ease-in-out infinite;
+  }
+  .blob.b1 { width: 300px; height: 300px; background: #ffd3e0; top: -80px; left: -60px; }
+  .blob.b2 { width: 260px; height: 260px; background: #fff3b0; bottom: -60px; right: -40px; animation-delay: -4s; }
+  .blob.b3 { width: 200px; height: 200px; background: #c8e6ff; top: 40%; left: 50%; animation-delay: -8s; }
+
+  @keyframes blobFloat {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -20px) scale(1.08); }
+    66% { transform: translate(-20px, 25px) scale(.95); }
+  }
+
+  /* 花瓣/光点飘落层 */
+  #petals {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    overflow: hidden;
+  }
+  .petal {
+    position: absolute;
+    top: -20px;
+    border-radius: 60% 0 60% 0;
+    opacity: .7;
+    animation: petalFall linear forwards;
+  }
+  @keyframes petalFall {
+    0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
+    10% { opacity: .8; }
+    100% { transform: translateY(105vh) rotate(720deg); opacity: .2; }
+  }
+
+  #notes {
+    position: absolute;
+    inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+           env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    z-index: 2;
+  }
+
+  .note {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    padding: 2px 3px;
+    border-radius: 10px;
+    text-align: center;
+    color: #4a3427;
+    overflow: hidden;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    box-shadow: 0 4px 10px rgba(120, 70, 30, .18), inset 0 -14px 18px rgba(140, 90, 40, .08), inset 0 1px 0 rgba(255,255,255,.5);
+    animation: notePop .62s cubic-bezier(.34,1.56,.64,1) both;
+  }
+
+  .note .emoji { font-size: 1.1em; line-height: 1.1; pointer-events: none; }
+  .note .txt { font-size: 1em; line-height: 1.15; white-space: nowrap; pointer-events: none; font-weight: 600; }
+
+  @keyframes notePop {
+    0%   { transform: scale(.12) rotate(-8deg); opacity: 0; }
+    42%  { transform: scale(1.15) rotate(2deg); opacity: 1; }
+    62%  { transform: scale(.92) rotate(-1deg); }
+    78%  { transform: scale(1.06) rotate(1deg); }
+    90%  { transform: scale(.975) rotate(0); }
+    100% { transform: scale(1) rotate(0); }
+  }
+
+  .note.dragging {
+    animation: none;
+    transform: scale(1.09) rotate(0deg);
+    box-shadow: 0 18px 30px rgba(80, 45, 15, .35), 0 0 0 2px rgba(255, 255, 255, .8) inset;
+    filter: saturate(1.1) brightness(1.05);
+    z-index: 999999 !important;
+    transition: transform .14s ease, box-shadow .14s ease;
+  }
+
+  /* 开场弹窗 */
+  #overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(30, 20, 30, .5);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    transition: opacity .38s ease, visibility .38s ease;
+  }
+  #overlay.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  .modal {
+    position: relative;
+    width: 100%;
+    max-width: 330px;
+    padding: 32px 24px 26px;
+    border-radius: 26px;
+    background: linear-gradient(170deg, #fffdf9 0%, #fff1e2 100%);
+    box-shadow: 0 30px 70px rgba(180, 80, 100, .3), inset 0 0 0 1px rgba(255, 255, 255, .95);
+    text-align: center;
+    animation: modalIn .6s cubic-bezier(.2, .9, .3, 1.35) both;
+    overflow: hidden;
+  }
+  .modal::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #ff8a9b, #ffc36e, #ff8a9b);
+  }
+
+  @keyframes modalIn {
+    0%   { transform: scale(.7) translateY(24px); opacity: 0; }
+    60%  { transform: scale(1.05) translateY(0); opacity: 1; }
+    100% { transform: scale(1) translateY(0); }
+  }
+
+  .modal .gift {
+    font-size: 64px;
+    line-height: 1;
+    display: inline-block;
+    animation: giftBounce 1.5s ease-in-out infinite;
+    filter: drop-shadow(0 10px 16px rgba(220, 130, 40, .4));
+  }
+
+  @keyframes giftBounce {
+    0%, 100% { transform: translateY(0) rotate(-6deg) scale(1); }
+    50%      { transform: translateY(-12px) rotate(6deg) scale(1.08); }
+  }
+
+  .modal h1 {
+    margin: 18px 0 0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: .5px;
+    color: #3d2b1f;
+  }
+  .modal p {
+    margin: 12px 0 24px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #a07860;
+  }
+
+  #okBtn {
+    -webkit-appearance: none;
+    appearance: none;
+    border: 0;
+    width: 100%;
+    padding: 15px 0;
+    border-radius: 999px;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-indent: 4px;
+    color: #fff;
+    font-family: inherit;
+    background: linear-gradient(135deg, #ff8a9b, #ff5f7e 55%, #ff7a59);
+    box-shadow: 0 12px 24px rgba(255, 95, 126, .45), inset 0 1px 0 rgba(255,255,255,.3);
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  #okBtn::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+    animation: btnShine 2.5s ease-in-out infinite;
+  }
+  @keyframes btnShine {
+    0% { left: -100%; }
+    50%, 100% { left: 100%; }
+  }
+  #okBtn:active { transform: scale(.96); box-shadow: 0 6px 14px rgba(255, 95, 126, .4); filter: brightness(.97); }
+
+  /* 音效开关 */
+  #sound {
+    position: absolute;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    right: calc(14px + env(safe-area-inset-right, 0px));
+    z-index: 1000000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px; height: 42px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    font-size: 18px;
+    line-height: 1;
+    color: #fff;
+    background: rgba(50, 40, 55, .65);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition: opacity .3s ease, transform .3s ease, background .15s ease;
+  }
+  #sound.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  #sound.off { background: rgba(140, 130, 145, .5); }
+
+  /* 收尾卡片 */
+  .finale {
+    position: absolute;
+    left: 50%; top: 50%;
+    z-index: 1000001;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 30px 26px 24px;
+    border-radius: 26px;
+    background: linear-gradient(170deg, #fffdf9 0%, #fff1e2 100%);
+    box-shadow: 0 28px 60px rgba(180, 80, 100, .35), inset 0 0 0 1px rgba(255, 255, 255, .95);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(.8);
+    pointer-events: none;
+    transition: opacity .45s ease, transform .5s cubic-bezier(.2, .9, .3, 1.4);
+    overflow: hidden;
+  }
+  .finale::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #ff8a9b, #ffc36e, #ff8a9b);
+  }
+  .finale.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+  .finale .heart {
+    display: inline-block;
+    font-size: 68px;
+    line-height: 1;
+    animation: giftBounce 1.8s ease-in-out infinite;
+    filter: drop-shadow(0 10px 16px rgba(220, 90, 120, .4));
+  }
+  .finale-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #8a6050;
+    margin: -6px 0 0;
+    letter-spacing: 1px;
+  }
+  .finale-btns {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+  }
+  .finale-btns button {
+    -webkit-appearance: none;
+    appearance: none;
+    border: 0;
+    padding: 13px 20px;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+  }
+  .finale-btns button:active { transform: scale(.95); filter: brightness(.97); }
+  #again {
+    color: #8a6a58;
+    background: #fff;
+    box-shadow: 0 6px 16px rgba(140, 100, 70, .18), inset 0 0 0 1.5px #f0d9c6;
+  }
+  #empowered {
+    color: #fff;
+    background: linear-gradient(135deg, #ff8a9b, #ff5f7e 55%, #ff7a59);
+    box-shadow: 0 10px 20px rgba(255, 95, 126, .45);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal, .note, .modal .gift, .finale .heart, .blob {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div id="stage">
+    <div id="board">
+      <div class="blob b1"></div>
+      <div class="blob b2"></div>
+      <div class="blob b3"></div>
+      <div id="petals"></div>
+      <div id="notes"></div>
+      <button id="sound" type="button" aria-label="声音开关">🔊</button>
+
+      <div id="finale" class="finale">
+        <div class="heart">💝</div>
+        <div class="finale-title">愿你的愿望一路生花</div>
+        <div class="finale-btns">
+          <button id="empowered" type="button">加油吧！</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div class="modal">
+      <div class="gift">🎁</div>
+      <h1>你收到一份神秘礼物</h1>
+      <p>在你考研的路上<br>愿你的愿望一路生花 🌸</p>
+      <button id="okBtn" type="button">确 定</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ==================== 1. 便签文案 ==================== */
+  var PHRASES = [
+    '📚|一战成硕','🎓|上岸成功','✏️|笔尖生花','🌟|金榜题名','💪|坚持到最后',
+    '🍀|考研必胜','📖|背书超快','☀️|心态稳一点','🔥|冲刺加油','🌙|别熬夜太久',
+    '🧠|记得住知识','🎯|目标就在前方','🏆|高分上岸','💗|你一定可以','🐣|早起有奇迹',
+    '☕|喝杯咖啡提神','📝|做题超顺手','🌈|苦尽甘来','🧣|天冷记得加衣','🍚|记得按时吃饭',
+    '🌻|向阳而生的你','⭐|你是最棒的','🎈|保持好状态','🥰|稳住别慌','📕|政治背得完',
+    '🔢|数学不算错','🔤|英语阅读全对','🧪|专业课全会','🛏|记得睡够觉','💫|一研为定',
+    '🍬|生活有点甜','🐢|慢慢来比较快','🌞|早安考研人','😌|深呼吸别紧张','💌|想给你打气',
+    '🎁|好运都给你','🐻|我陪着你呢','🍀|运气站你这边','🌷|一切都会顺利','🍊|记得吃水果',
+    '🥛|记得喝牛奶','🍳|早餐一定要吃','😴|困了就趴一会','🤗|抱一下充充电','💞|心里都是期待',
+    '🌠|愿望会成真','🎊|值得被录取','🐼|慢慢变厉害','🍇|未来一片光明','💌|努力不会白费',
+    '🌻|保持热爱呀','🥳|考完就自由','✨|万事皆胜意','😃|笑一个再学','🌤|天冷多穿点',
+    '🍁|秋天一起上岸','❄️|冬天等好消息','🕯|别逼自己太紧','🎵|好心情常在线','📻|累了就歇会',
+    '🌈|未来值得期待','🍓|甜甜的坚持','💝|你最珍贵','🌹|想和你同校','🐬|自由日子快来',
+    '🍩|别饿着肚子学','🎀|今天状态满分','💪|你能扛过去的','🥇|你是第一名','🌙|梦里也在背书',
+    '🐥|别怕慢慢来','💖|一直为你加油','🍭|甜一点再坚持','🎓|录取通知到啦','🌟|你闪闪发光呀',
+    '💐|愿你被录取','🍀|平安喜乐上岸','🧸|累了就抱抱','💗|好喜欢你努力','🎉|恭喜你上岸啦'
+  ];
+
+  var COLORS = [
+    '#FFE082','#FFCC80','#FFAB91','#F8BBD0','#E1BEE7',
+    '#C5CAE9','#B3E5FC','#B2DFDB','#C8E6C9','#DCEDC8',
+    '#FFF59D','#FFE0B2','#FFCDD2','#F48FB1','#CE93D8',
+    '#9FA8DA','#81D4FA','#80CBC4','#A5D6A7','#DCE775'
+  ];
+
+  var TOTAL = 80, INTERVAL = 375, DURATION = TOTAL * INTERVAL;
+  var PRESS_MS = 380, FS_MAX = 120;
+  var SCALE = 1.38, JIT = 0.17;
+
+  var EMOJIS = [], TEXTS = [];
+  for (var k = 0; k < PHRASES.length; k++) {
+    var parts = PHRASES[k].split('|');
+    EMOJIS.push(parts[0]); TEXTS.push(parts[1] || '');
+  }
+  var MAX_CHARS = TEXTS.reduce(function (m, t) { return Math.max(m, t.length); }, 1);
+
+  var overlay = document.getElementById('overlay');
+  var okBtn   = document.getElementById('okBtn');
+  var finale  = document.getElementById('finale');
+  var again   = null; // document.getElementById('again');
+  var empowered = document.getElementById('empowered');
+  var soundBtn = document.getElementById('sound');
+  var board   = document.getElementById('board');
+  var layer   = document.getElementById('notes');
+  var petals  = document.getElementById('petals');
+
+  var layout = null, cells = [], order = [], notes = [];
+  var spawned = 0, timer = null, hardStop = null;
+  var running = false, lastColor = -1, audioOn = true;
+
+  /* ==================== Web Audio 引擎 ==================== */
+  var Sound = (function () {
+    var ctx = null, on = true, unlocked = false;
+    var dryGain = null, verbSend = null, wetGain = null, verb = null;
+
+    function supported() { return !!(window.AudioContext || window.webkitAudioContext); }
+
+    function unlock() {
+      if (!ctx && supported()) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        ctx = new AC(); build();
+      }
+      if (ctx && ctx.state === 'suspended') { try { ctx.resume(); } catch (e) {} }
+      if (ctx && !unlocked) {
+        unlocked = true;
+        try {
+          var sb = ctx.createBufferSource();
+          sb.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+          sb.connect(ctx.destination); sb.start(0);
+        } catch (e) {}
+      }
+    }
+
+    function makeImpulse(dur, decay) {
+      var rate = ctx.sampleRate, len = Math.floor(rate * dur);
+      var buf = ctx.createBuffer(2, len, rate);
+      for (var ch = 0; ch < 2; ch++) {
+        var d = buf.getChannelData(ch);
+        for (var i = 0; i < len; i++)
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      }
+      return buf;
+    }
+
+    function build() {
+      var master = ctx.createGain(); master.gain.value = 1.0;
+      var soften = ctx.createBiquadFilter();
+      soften.type = 'lowpass'; soften.frequency.value = 5200; soften.Q.value = .4;
+      var comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -6; comp.knee.value = 16; comp.ratio.value = 3;
+      comp.attack.value = .004; comp.release.value = .25;
+      dryGain = ctx.createGain(); dryGain.gain.value = .92;
+      wetGain = ctx.createGain(); wetGain.gain.value = .30;
+      verbSend = ctx.createGain(); verbSend.gain.value = 1;
+      verb = ctx.createConvolver(); verb.buffer = makeImpulse(1.7, 2.8);
+      dryGain.connect(soften);
+      verbSend.connect(verb); verb.connect(wetGain); wetGain.connect(soften);
+      soften.connect(comp); comp.connect(master); master.connect(ctx.destination);
+    }
+
+    function mallet(freq, opts) {
+      if (!ctx || !on) return;
+      opts = opts || {};
+      var t = opts.at || ctx.currentTime;
+      var gain = opts.gain || .15, dur = opts.dur || 1.0;
+      var parts = [
+        { m: 1, g: 1.0, d: 1.0 },
+        { m: 4.0, g: .35, d: 2.5 },
+        { m: 7.2, g: .15, d: 4.0 }
+      ];
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        var osc = ctx.createOscillator();
+        osc.type = 'sine'; osc.frequency.value = freq * p.m;
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(.0001, t);
+        g.gain.exponentialRampToValueAtTime(gain * p.g, t + .008);
+        g.gain.exponentialRampToValueAtTime(.0001, t + dur / p.d);
+        osc.connect(g); g.connect(dryGain); g.connect(verbSend);
+        osc.start(t); osc.stop(t + dur / p.d + .1);
+      }
+    }
+
+    function open() {
+      unlock(); if (!ctx || !on) return;
+      var t = ctx.currentTime + .03;
+      var arp = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+      for (var i = 0; i < arp.length; i++)
+        mallet(arp[i], { at: t + i * .09, gain: .15, dur: 1.5 });
+    }
+    function pick() { mallet(1046.50, { gain: .10, dur: .35 }); }
+    function drop() { mallet(392.00, { gain: .12, dur: .55 }); }
+    function bgmNote(freq, when) { mallet(freq, { at: when, gain: .05, dur: 1.8 }); }
+    function bassNote(freq, when) { mallet(freq, { at: when, gain: .035, dur: 2.5 }); }
+
+    function toggle() { on = !on; if (on) unlock(); return on; }
+
+    return { supported: supported, open: open, pick: pick, drop: drop,
+             toggle: toggle, bgmNote: bgmNote, bassNote: bassNote,
+             unlock: unlock };
+  })();
+
+  /* ==================== 一路生花 旋律 ==================== */
+  var Bgm = (function () {
+    // C大调音符频率
+    var N = {
+      C4:261.63, D4:293.66, E4:329.63, F4:349.23, G4:392.00, A4:440.00, B4:493.88,
+      C5:523.25, D5:587.33, E5:659.25, F5:698.46, G5:783.99, A5:880.00,
+      C3:130.81, F3:174.61, G3:196.00, A3:220.00, E3:164.81
+    };
+    // 一路生花副歌主旋律 [频率, 拍数]
+    var melody = [
+      [N.G4,1],[N.G4,1],[N.A4,1],[N.C5,1.5],[N.B4,.5],[N.A4,1],[N.G4,1],
+      [N.E4,1],[N.G4,1],[N.A4,1],[N.G4,1],[N.E4,1],[N.D4,1],[N.C4,1.5],[N.D4,.5],
+      [N.E4,1],[N.G4,1],[N.G4,1],[N.A4,1],[N.C5,1.5],[N.B4,.5],[N.A4,1],[N.G4,1],
+      [N.E4,1],[N.D4,1],[N.C4,1],[N.D4,1],[N.E4,1],[N.G4,2],
+      // 第二段
+      [N.G4,1],[N.G4,1],[N.A4,1],[N.C5,1.5],[N.B4,.5],[N.A4,1],[N.G4,1],
+      [N.E4,1],[N.G4,1],[N.A4,1],[N.G4,1],[N.E4,1],[N.D4,1],[N.C4,1.5],[N.D4,.5],
+      [N.E4,1],[N.G4,1],[N.A4,1],[N.C5,1],[N.D5,1],[N.E5,1.5],[N.D5,.5],
+      [N.C5,1],[N.B4,1],[N.A4,1],[N.G4,1],[N.A4,2]
+    ];
+    // 简单低音伴奏 [频率, 起始拍数]
+    var bass = [
+      [N.C3,0],[N.G3,4],[N.A3,8],[N.F3,12],[N.C3,16],[N.G3,20],[N.C3,24],
+      [N.F3,28],[N.C3,32],[N.G3,36],[N.A3,40],[N.F3,44],[N.C3,48],[N.G3,52],[N.C3,56]
+    ];
+
+    var BPM = 72;
+    var beatDur = 60 / BPM;
+    var timer = null, started = false, running = false;
+    var noteIdx = 0, barStart = 0;
+
+    function scheduleBar() {
+      if (!running || !Sound.supported()) return;
+      if (!ctxReady()) return;
+      var t0 = Sound._now ? Sound._now() + .1 : (performance.now()/1000);
+      // 简单处理：逐拍用 setInterval 触发
+    }
+
+    function ctxReady() { return Sound.supported(); }
+
+    function tick() {
+      if (!running) return;
+      var now = getNow();
+      // 弹下一个旋律音
+      if (noteIdx < melody.length) {
+        var [freq, beats] = melody[noteIdx];
+        Sound.bgmNote(freq, now + .05);
+        // 低音伴奏在特定位置
+        noteIdx++;
+      } else {
+        noteIdx = 0; // 循环
+      }
+    }
+
+    var audioStartTime = 0;
+    function getNow() {
+      // 用 AudioContext 时间
+      return audioStartTime;
+    }
+
+    function start() {
+      if (started) return;
+      started = true; running = true;
+      Sound.unlock();
+      // 计算每拍间隔，用 setInterval 逐音播放
+      var totalBeats = 0;
+      for (var i = 0; i < melody.length; i++) totalBeats += melody[i][1];
+      var msPerBeat = beatDur * 1000;
+
+      noteIdx = 0;
+      function playNext() {
+        if (!running) return;
+        if (!ctxReady()) { setTimeout(playNext, 200); return; }
+        if (noteIdx < melody.length) {
+          var [freq, beats] = melody[noteIdx];
+          Sound.bgmNote(freq);
+          // 伴奏：每小节第一个音
+          noteIdx++;
+          var delay = beats * msPerBeat;
+          timer = setTimeout(playNext, delay);
+        } else {
+          noteIdx = 0;
+          timer = setTimeout(playNext, msPerBeat);
+        }
+      }
+      playNext();
+    }
+
+    function mute() { running = false; if (timer) clearTimeout(timer); }
+    function unmute() {
+      if (!running) { running = true; if (!timer) start(); }
+      running = true;
+    }
+    function fadeOut() { running = false; if (timer) clearTimeout(timer); }
+    function replay() {
+      noteIdx = 0; running = true;
+      if (timer) clearTimeout(timer);
+      start(); started = false;
+    }
+
+    return { supported: function(){return true;}, start: start,
+             mute: mute, unmute: unmute, fadeOut: fadeOut, replay: replay };
+  })();
+
+  /* ==================== 花瓣粒子 ==================== */
+  var PETAL_COLORS = ['#ffc3d0','#ffd6a5','#fff3b0','#c8e6ff','#d4f0d4','#e8d5ff'];
+  function spawnPetal() {
+    var p = document.createElement('div');
+    p.className = 'petal';
+    var size = 8 + Math.random() * 10;
+    p.style.width = size + 'px';
+    p.style.height = size + 'px';
+    p.style.left = Math.random() * 100 + 'vw';
+    p.style.background = PETAL_COLORS[Math.floor(Math.random() * PETAL_COLORS.length)];
+    p.style.animationDuration = (6 + Math.random() * 6) + 's';
+    p.style.animationDelay = '0s';
+    petals.appendChild(p);
+    setTimeout(function(){ p.remove(); }, 13000);
+  }
+  var petalTimer = null;
+  function startPetals() {
+    if (petalTimer) return;
+    petalTimer = setInterval(spawnPetal, 600);
+    // 初始撒几个
+    for (var i = 0; i < 5; i++) setTimeout(spawnPetal, i * 200);
+  }
+
+  /* ==================== 工具 ==================== */
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+  function pickColor() {
+    var i;
+    do { i = Math.floor(Math.random() * COLORS.length); }
+    while (COLORS.length > 1 && i === lastColor);
+    lastColor = i; return COLORS[i];
+  }
+  function divisorCols() {
+    var out = [];
+    for (var c = 2; c <= TOTAL; c++) if (TOTAL % c === 0) out.push(c);
+    return out.length ? out : [1];
+  }
+  var TARGET_ASPECT = 2.35;
+  function computeLayout() {
+    var W = layer.clientWidth, H = layer.clientHeight;
+    if (W <= 0 || H <= 0) { W = window.innerWidth; H = window.innerHeight; }
+    var cands = divisorCols(), best = null, bestScore = Infinity;
+    for (var i = 0; i < cands.length; i++) {
+      var cols = cands[i], rows = TOTAL / cols;
+      var cellW = W / cols, cellH = H / rows;
+      var score = Math.abs(Math.log((cellW / cellH) / TARGET_ASPECT));
+      if (score < bestScore) {
+        var cardW = cellW * SCALE, cardH = cellH * SCALE;
+        var fW = (cardW - 7) / MAX_CHARS, fH = (cardH - 6) / 2.5;
+        bestScore = score;
+        best = { W: W, H: H, cols: cols, rows: rows, cellW: cellW, cellH: cellH,
+                 cardW: cardW, cardH: cardH, fontSize: Math.max(5, Math.min(fW, fH, FS_MAX)) };
+      }
+    }
+    return best;
+  }
+  function buildCells(l) {
+    var list = [];
+    for (var r = 0; r < l.rows; r++)
+      for (var c = 0; c < l.cols; c++) list.push({ r: r, c: c });
+    return shuffle(list);
+  }
+  function place(el, cell, l) {
+    var w = l.cardW, h = l.cardH;
+    var left = (cell.c + .5) * l.cellW - w / 2 + (Math.random() - .5) * 2 * JIT * l.cellW;
+    var top  = (cell.r + .5) * l.cellH - h / 2 + (Math.random() - .5) * 2 * JIT * l.cellH;
+    left = Math.min(Math.max(left, 0), Math.max(0, l.W - w));
+    top  = Math.min(Math.max(top, 0), Math.max(0, l.H - h));
+    el.style.width = w + 'px'; el.style.height = h + 'px';
+    el.style.left = left + 'px'; el.style.top = top + 'px';
+  }
+
+  /* ==================== 长按拖拽 ==================== */
+  function attachDrag(el) {
+    var st = null, pressTimer = null, activated = false;
+    function finish() {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      if (activated) { el.classList.remove('dragging'); Sound.drop(); }
+      st = null; activated = false;
+    }
+    el.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      var nr = el.getBoundingClientRect(), br = layer.getBoundingClientRect();
+      st = { id: e.pointerId, sx: e.clientX, sy: e.clientY,
+             ox: nr.left - br.left, oy: nr.top - br.top, w: nr.width, h: nr.height };
+      activated = false;
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+      pressTimer = setTimeout(function () {
+        pressTimer = null; activated = true;
+        el.classList.add('dragging'); Sound.pick();
+        if (navigator.vibrate) { try { navigator.vibrate(18); } catch (err) {} }
+      }, PRESS_MS);
+    });
+    el.addEventListener('pointermove', function (e) {
+      if (!st || e.pointerId !== st.id) return;
+      var dx = e.clientX - st.sx, dy = e.clientY - st.sy;
+      if (!activated) {
+        if (Math.sqrt(dx*dx + dy*dy) > 10) finish();
+        return;
+      }
+      var l = layout || computeLayout();
+      var left = Math.min(Math.max(st.ox + dx, 0), Math.max(0, l.W - st.w));
+      var top  = Math.min(Math.max(st.oy + dy, 0), Math.max(0, l.H - st.h));
+      el.style.left = left + 'px'; el.style.top = top + 'px';
+    });
+    el.addEventListener('pointerup', finish);
+    el.addEventListener('pointercancel', finish);
+    el.addEventListener('lostpointercapture', finish);
+  }
+
+  /* ==================== 生成便签 ==================== */
+  function spawn() {
+    if (spawned >= TOTAL) { stop(); return; }
+    if (!layout) return;
+    var i = order[spawned % order.length];
+    var cell = cells[spawned % cells.length];
+    var el = document.createElement('div');
+    el.className = 'note';
+    el.style.fontSize = layout.fontSize + 'px';
+    el.style.background = pickColor();
+    el.style.zIndex = String(10 + spawned);
+    el.dataset.cell = cell.r + ',' + cell.c;
+    var emo = document.createElement('span'); emo.className = 'emoji'; emo.textContent = EMOJIS[i];
+    var txt = document.createElement('span'); txt.className = 'txt'; txt.textContent = TEXTS[i];
+    el.appendChild(emo); el.appendChild(txt);
+    layer.appendChild(el); place(el, cell, layout); attachDrag(el);
+    notes.push(el); spawned++;
+  }
+  function start() {
+    if (running) reset();
+    running = true;
+    finale.classList.remove('show');
+    if (Sound.supported()) soundBtn.classList.add('show');
+    startPetals();
+    layout = computeLayout(); cells = buildCells(layout);
+    order = [];
+    for (var i = 0; i < TEXTS.length; i++) order.push(i);
+    shuffle(order);
+    timer = setInterval(spawn, INTERVAL);
+    hardStop = setTimeout(stop, DURATION + 60);
+  }
+  function stop() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (hardStop) { clearTimeout(hardStop); hardStop = null; }
+    if (!running) return;
+    running = false;
+    finale.classList.add('show');
+    Bgm.fadeOut();
+  }
+  function reset() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (hardStop) { clearTimeout(hardStop); hardStop = null; }
+    running = false;
+    notes.forEach(function (n) { n.remove(); });
+    notes = []; spawned = 0; lastColor = -1;
+  }
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (!layout) return;
+      layout = computeLayout(); cells = buildCells(layout);
+      notes.forEach(function (el) {
+        var p = (el.dataset.cell || '0,0').split(',');
+        var cell = { r: parseInt(p[0],10)||0, c: parseInt(p[1],10)||0 };
+        cell.r = Math.min(cell.r, layout.rows - 1);
+        cell.c = Math.min(cell.c, layout.cols - 1);
+        el.style.fontSize = layout.fontSize + 'px';
+        place(el, cell, layout);
+      });
+    }, 200);
+  });
+
+  /* ==================== 交互 ==================== */
+  okBtn.addEventListener('click', function () {
+    Sound.open();
+    Bgm.start();
+    overlay.classList.add('hide');
+    setTimeout(function () { overlay.style.display = 'none'; }, 420);
+    start();
+  });
+
+  soundBtn.addEventListener('click', function () {
+    var on = Sound.toggle();
+    audioOn = on;
+    soundBtn.textContent = on ? '🔊' : '🔇';
+    soundBtn.classList.toggle('off', !on);
+    if (on) { Sound.pick(); Bgm.unmute(); }
+    else { Bgm.mute(); }
+  });
+
+  // again.addEventListener('click', function () {
+  //   finale.classList.remove('show');
+  //   reset(); start();
+  //   if (audioOn) Bgm.replay();
+  // });
+
+  empowered.addEventListener('click', function () {
+    finale.classList.remove('show');
+    try { Bgm.mute(); } catch (e) {}
+    try { window.open('', '_self', ''); } catch (e) {}
+    try { window.close(); } catch (e) {}
+    setTimeout(function () {
+      document.body.innerHTML = '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#fff8ef,#ffe8d6);color:#c9a68f;font:600 16px/1.6 -apple-system,\'PingFang SC\',\'Microsoft YaHei\',sans-serif;text-align:center">愿你一路生花，成功上岸 🌸 可以关掉这个标签页啦 👋</div>';
+    }, 400);
+  });
+
+  document.addEventListener('contextmenu', function (e) {
+    if (e.target && e.target.closest && e.target.closest('.note')) e.preventDefault();
+  });
+  document.addEventListener('dblclick', function (e) { e.preventDefault(); }, { passive: false });
+})();
+</script>
+</body>
+</html>
